@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Buat Kamu 💌</title>
+<style>
+:root{--bg:#fff1f4;--fg:#4a1d2b;--card:#ffffff;--accent:#e8476a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#2a1219;--fg:#ffe3ea;--card:#3c1b26;--accent:#ff6b8b}}
+:root[data-theme="dark"]{--bg:#2a1219;--fg:#ffe3ea;--card:#3c1b26;--accent:#ff6b8b}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;position:relative;text-align:center}
+#top{position:absolute;top:12px;left:0;right:0;padding:0 16px;z-index:5}
+#count{font-weight:700;color:var(--accent)}
+#msg{margin:10px auto 0;max-width:420px;background:var(--card);border-radius:16px;padding:14px 16px;min-height:48px;box-shadow:0 4px 14px rgba(0,0,0,.12);transition:transform .2s}
+.heart{position:absolute;bottom:-60px;font-size:44px;cursor:pointer;user-select:none;animation:rise 6s linear forwards;-webkit-tap-highlight-color:transparent}
+@keyframes rise{to{transform:translateY(-115vh) rotate(15deg)}}
+.pop{animation:pop .3s forwards!important}
+@keyframes pop{to{transform:scale(2);opacity:0}}
+#end{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:var(--bg);z-index:10}
+#end h1{font-size:28px;margin:0 0 10px}
+#end p{max-width:380px;line-height:1.5;margin:0 0 24px}
+button{font:inherit;border:0;border-radius:999px;padding:12px 28px;cursor:pointer}
+#ya{background:var(--accent);color:#fff;font-weight:700;font-size:18px}
+#no{background:var(--card);color:var(--fg);position:absolute;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+#btns{position:relative;width:100%;height:120px}
+#ya,#no{position:absolute}
+</style>
+</head>
+<body>
+<div id="top">
+  <div>Tangkap hati-nya <span id="count">0/7</span> 💗</div>
+  <div id="msg">Ketuk hati yang melayang naik ya 👆</div>
+</div>
+
+<div id="end">
+  <h1 id="endTitle">Sayang…</h1>
+  <p id="endText">Aku tahu aku salah dan bikin kamu kesal. Aku beneran menyesal. Maafin aku ya?</p>
+  <div id="btns">
+    <button id="ya">Iya, dimaafin 💕</button>
+    <button id="no">Nggak</button>
+  </div>
+</div>
+
+<script>
+// ✏️ EDIT BAGIAN INI supaya lebih personal
+const NAME = "Sayang";
+const REASONS = [
+  "Aku minta maaf. Aku salah, dan aku nggak mau cari-cari alasan.",
+  "Aku sayang kamu, bahkan waktu kamu lagi cemberut. 🥺",
+  "Senyum kamu itu hal favoritku di dunia.",
+  "Aku mau belajar jadi lebih baik buat kamu.",
+  "Aku nggak mau menang debat, aku mau kamu baik-baik aja.",
+  "Kamu pantas diperlakukan dengan lebih baik, dan aku akan berusaha.",
+  "Satu hati lagi… dan aku punya pertanyaan penting buat kamu. 💌"
+];
+
+let n = 0, timer;
+const $ = id => document.getElementById(id);
+
+function spawn(){
+  const h = document.createElement('div');
+  h.className = 'heart';
+  h.textContent = ['💗','💖','💕','🌸','💘'][Math.floor(Math.random()*5)];
+  h.style.left = (Math.random()*80 + 5) + '%';
+  h.style.animationDuration = (4.5 + Math.random()*3) + 's';
+  h.addEventListener('pointerdown', () => {
+    if (h.classList.contains('pop')) return;
+    h.classList.add('pop');
+    setTimeout(() => h.remove(), 300);
+    n++;
+    $('count').textContent = n + '/7';
+    $('msg').textContent = REASONS[n-1];
+    if (n >= 7){ clearInterval(timer); setTimeout(finish, 1800); }
+  });
+  h.addEventListener('animationend', e => { if (e.animationName === 'rise') h.remove(); });
+  document.body.appendChild(h);
+}
+timer = setInterval(spawn, 650);
+
+function finish(){
+  document.querySelectorAll('.heart').forEach(x => x.remove());
+  $('endTitle').textContent = NAME + "…";
+  $('end').style.display = 'flex';
+  const box = $('btns');
+  $('ya').style.left = 'calc(50% - 150px)'; $('ya').style.top = '30px';
+  $('no').style.left = 'calc(50% + 40px)'; $('no').style.top = '34px';
+}
+
+let scale = 1;
+function dodge(e){
+  e.preventDefault();
+  const box = $('btns').getBoundingClientRect();
+  const no = $('no');
+  no.style.left = Math.random() * (box.width - 90) + 'px';
+  no.style.top = Math.random() * (box.height - 44) + 'px';
+  scale = Math.min(scale + 0.15, 1.8);
+  $('ya').style.transform = 'scale(' + scale + ')';
+}
+$('no').addEventListener('pointerenter', dodge);
+$('no').addEventListener('pointerdown', dodge);
+
+$('ya').addEventListener('click', () => {
+  $('endTitle').textContent = "Makasih, " + NAME + " 🥹💕";
+  $('endText').textContent = "Aku janji bakal lebih peka. Sekarang… boleh minta satu senyum? 😊";
+  $('btns').style.display = 'none';
+  let i = 0;
+  const rain = setInterval(() => {
+    const h = document.createElement('div');
+    h.className = 'heart';
+    h.style.pointerEvents = 'none';
+    h.style.zIndex = 20;
+    h.textContent = ['💖','💕','🌸','✨'][i++ % 4];
+    h.style.left = Math.random()*90 + '%';
+    document.body.appendChild(h);
+    if (i > 60) clearInterval(rain);
+  }, 120);
+});
+</script>
+</body>
+</html>
