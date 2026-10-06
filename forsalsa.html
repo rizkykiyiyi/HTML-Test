@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sidang Salsa ⚖️</title>
+<style>
+:root{--bg:#fff1f4;--fg:#4a1d2b;--card:#ffffff;--accent:#e8476a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#2a1219;--fg:#ffe3ea;--card:#3c1b26;--accent:#ff6b8b}}
+:root[data-theme="dark"]{--bg:#2a1219;--fg:#ffe3ea;--card:#3c1b26;--accent:#ff6b8b}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;position:relative;text-align:center}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;padding:20px;overflow-y:auto}
+.screen.on{display:flex}
+h1{font-size:26px;margin:0 0 10px}
+p{max-width:380px;line-height:1.5;margin:0 0 18px}
+button{font:inherit;border:0;border-radius:999px;padding:12px 24px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.main{background:var(--accent);color:#fff;font-weight:700}
+.main:disabled{opacity:.4;cursor:default}
+.chip{display:block;width:min(340px,86vw);margin:6px auto;background:var(--card);color:var(--fg);box-shadow:0 2px 8px rgba(0,0,0,.15);border-radius:16px;border:2px solid transparent;text-align:left}
+.chip.sel{border-color:var(--accent);background:var(--accent);color:#fff;font-weight:700}
+.gavel{font-size:64px;display:inline-block}
+.shake{animation:hit .5s}
+@keyframes hit{0%{transform:rotate(0)}30%{transform:rotate(-40deg)}60%{transform:rotate(15deg) scale(1.2)}100%{transform:rotate(0)}}
+.card{position:relative;width:min(340px,86vw);height:290px;margin-bottom:18px}
+.letter{position:absolute;inset:0;background:var(--card);border-radius:18px;padding:18px;box-sizing:border-box;box-shadow:0 4px 14px rgba(0,0,0,.15);line-height:1.5;text-align:left;font-size:15px;overflow:hidden}
+#cv{position:absolute;inset:0;border-radius:18px;touch-action:none;transition:opacity .6s}
+#btns{position:relative;width:100%;height:120px}
+#ya,#no{position:absolute}
+#no{background:var(--card);color:var(--fg);box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.heart{position:absolute;bottom:-60px;font-size:40px;pointer-events:none;z-index:20;animation:rise 6s linear forwards}
+@keyframes rise{to{transform:translateY(-115vh) rotate(15deg)}}
+</style>
+</head>
+<body>
+
+<div id="s0" class="screen on">
+  <div class="gavel">⚖️</div>
+  <h1>Sidang Salsa</h1>
+  <p>Hari ini kamu jadi <b>hakim</b>. Terdakwa: aku, yang sudah bikin kamu kesal. Kamu berhak menjatuhkan hukuman.</p>
+  <button class="main" onclick="show('s1')">Buka persidangan</button>
+</div>
+
+<div id="s1" class="screen">
+  <h1>Pilih 3 hukuman</h1>
+  <p>Terdakwa siap menjalani apa pun. <b id="cnt">0/3</b></p>
+  <div id="list"></div>
+  <button class="main" id="hit" disabled onclick="verdict()" style="margin-top:12px">🔨 Ketuk palu</button>
+</div>
+
+<div id="s2" class="screen">
+  <div class="gavel shake">🔨</div>
+  <h1>Putusan!</h1>
+  <p id="vtext"></p>
+  <p>Tapi sebelum hukuman jalan, terdakwa menitipkan surat. Mau dibuka?</p>
+  <button class="main" onclick="openLetter()">Buka suratnya</button>
+</div>
+
+<div id="s3" class="screen">
+  <p><b>Gosok kartunya untuk membaca</b> ✨</p>
+  <div class="card">
+    <div class="letter">
+      <b>Untuk Salsa,</b><br><br>
+      Aku tahu aku salah, dan aku nggak mau cari-cari alasan atau membela diri.<br><br>
+      Aku minta maaf sudah bikin kamu kesal dan sedih. Kamu penting banget buat aku, dan aku mau belajar jadi lebih baik.<br><br>
+      Terima kasih sudah sabar sama aku. 🥺<br>
+      <i>— Terdakwa</i>
+    </div>
+    <canvas id="cv"></canvas>
+  </div>
+  <button class="main" id="go" style="display:none" onclick="finish()">Lanjut ke sidang terakhir</button>
+</div>
+
+<div id="s4" class="screen">
+  <h1 id="endTitle">Salsa…</h1>
+  <p id="endText">Satu pertanyaan terakhir dari terdakwa. Maafin aku ya?</p>
+  <div id="btns">
+    <button class="main" id="ya" style="font-size:18px">Iya, dimaafin 💕</button>
+    <button id="no">Nggak</button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));$(id).classList.add('on')}
+
+const PUN = ["🧋 Traktir boba","🍦 Bawain es krim","🍜 Traktir makan di tempat pilihan Salsa","📵 Dengerin curhat 1 jam tanpa pegang HP","🎬 Nonton film pilihan Salsa","💆 Pijat 15 menit"];
+const picked = new Set();
+PUN.forEach((t,i)=>{
+  const b=document.createElement('button');b.className='chip';b.textContent=t;
+  b.onclick=()=>{
+    if(picked.has(i)){picked.delete(i);b.classList.remove('sel')}
+    else if(picked.size<3){picked.add(i);b.classList.add('sel')}
+    $('cnt').textContent=picked.size+'/3';
+    $('hit').disabled=picked.size!==3;
+  };
+  $('list').appendChild(b);
+});
+function verdict(){
+  const names=[...picked].map(i=>PUN[i].slice(3).toLowerCase());
+  $('vtext').textContent='Terdakwa dijatuhi hukuman: '+names.join(', ')+'. Hukuman akan dijalankan dengan senang hati.';
+  show('s2');
+}
+
+const cv=$('cv'),ctx=cv.getContext('2d');
+let down=false,moves=0,done=false;
+function openLetter(){
+  show('s3');
+  const r=cv.parentElement.getBoundingClientRect();
+  cv.width=r.width;cv.height=r.height;
+  const g=ctx.createLinearGradient(0,0,r.width,r.height);
+  g.addColorStop(0,'#f7a1b5');g.addColorStop(1,'#e8476a');
+  ctx.fillStyle=g;ctx.fillRect(0,0,r.width,r.height);
+  ctx.fillStyle='#fff';ctx.font='bold 20px system-ui';ctx.textAlign='center';
+  ctx.fillText('💌 Gosok di sini',r.width/2,r.height/2);
+}
+function scratch(e){
+  if(!down||done)return;
+  const r=cv.getBoundingClientRect();
+  ctx.globalCompositeOperation='destination-out';
+  ctx.beginPath();ctx.arc(e.clientX-r.left,e.clientY-r.top,24,0,7);ctx.fill();
+  if(++moves%8===0)check();
+}
+function check(){
+  const d=ctx.getImageData(0,0,cv.width,cv.height).data;
+  let c=0,t=0;
+  for(let i=3;i<d.length;i+=160){t++;if(d[i]===0)c++}
+  if(c/t>0.45){done=true;cv.style.opacity=0;$('go').style.display='block'}
+}
+cv.addEventListener('pointerdown',e=>{down=true;scratch(e)});
+cv.addEventListener('pointermove',scratch);
+window.addEventListener('pointerup',()=>down=false);
+
+function finish(){
+  show('s4');
+  $('ya').style.left='calc(50% - 150px)';$('ya').style.top='30px';
+  $('no').style.left='calc(50% + 40px)';$('no').style.top='34px';
+}
+let scale=1;
+function dodge(e){
+  e.preventDefault();
+  const box=$('btns').getBoundingClientRect();
+  $('no').style.left=Math.random()*(box.width-90)+'px';
+  $('no').style.top=Math.random()*(box.height-44)+'px';
+  scale=Math.min(scale+0.15,1.8);
+  $('ya').style.transform='scale('+scale+')';
+}
+$('no').addEventListener('pointerenter',dodge);
+$('no').addEventListener('pointerdown',dodge);
+
+$('ya').addEventListener('click',()=>{
+  $('endTitle').textContent='Makasih, Salsa 🥹💕';
+  $('endText').textContent='Terdakwa dibebaskan, tinggal hukumannya dijalankan. Boleh minta satu senyum dulu? 😊';
+  $('btns').style.display='none';
+  let n=0;
+  const t=setInterval(()=>{
+    const h=document.createElement('div');h.className='heart';
+    h.textContent=['💖','💕','🌸','✨'][n++%4];
+    h.style.left=Math.random()*90+'%';
+    document.body.appendChild(h);
+    if(n>60)clearInterval(t);
+  },120);
+});
+</script>
+</body>
+</html>
