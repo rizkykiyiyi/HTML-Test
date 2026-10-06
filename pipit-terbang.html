@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Pipit Terbang</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky: #cfe8e0;
+    --ink: #1d3b2f;
+    --paper: #fbf7ea;
+    --pipit: #e0583a;
+    --font: "Bricolage Grotesque", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--ink);
+    display: grid;
+    place-items: center;
+    font-family: var(--font);
+    color: var(--ink);
+    overflow: hidden;
+    touch-action: manipulation;
+    -webkit-user-select: none; user-select: none;
+  }
+  .stage {
+    position: relative;
+    width: min(400px, 96vw, calc(94vh * 2 / 3));
+    aspect-ratio: 2 / 3;
+    border: 4px solid var(--paper);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--sky);
+    cursor: pointer;
+  }
+  canvas { width: 100%; height: 100%; display: block; }
+
+  .overlay {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    padding: 20px; text-align: center;
+  }
+  .hidden { display: none; }
+
+  .start {
+    align-content: end; justify-items: center; gap: 12px; padding-bottom: 20%;
+    pointer-events: none;
+  }
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; pointer-events: auto; }
+  button.ghost {
+    width: auto; background: var(--paper); color: var(--ink);
+    font-size: .95rem; padding: 8px 14px;
+  }
+  button.ghost.wide { width: 100%; margin-top: 10px; }
+  .start p {
+    background: var(--paper); border: 3px solid var(--ink); border-radius: 6px;
+    padding: 10px 16px; font-weight: 700; font-size: 1.05rem;
+  }
+
+  .panel {
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    border-radius: 8px;
+    padding: 24px 28px;
+    width: min(300px, 100%);
+    box-shadow: 6px 6px 0 var(--ink);
+  }
+  .panel h2 { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 14px; }
+  .scores { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .scores div { border: 2px solid var(--ink); border-radius: 6px; padding: 8px 4px; }
+  .scores span { display: block; font-size: .9rem; font-weight: 500; }
+  .scores strong { font-size: 2rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .record { color: var(--pipit); font-weight: 700; margin-bottom: 12px; }
+  button {
+    font: 700 1.1rem var(--font); color: var(--paper);
+    background: var(--pipit); border: 3px solid var(--ink); border-radius: 6px;
+    padding: 10px 24px; cursor: pointer; width: 100%;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  .tip { margin-top: 10px; font-size: .85rem; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <canvas id="game"></canvas>
+
+  <div class="overlay start" id="startScreen">
+    <p>Ketuk layar atau tekan Spasi untuk terbang</p>
+    <div class="tools">
+      <button class="ghost" id="faceBtn">Ganti muka</button>
+      <button class="ghost hidden" id="faceReset">Pakai muka burung</button>
+    </div>
+  </div>
+  <input type="file" id="faceFile" accept="image/*" hidden>
+
+  <div class="overlay hidden" id="overScreen">
+    <div class="panel" role="dialog" aria-labelledby="overTitle">
+      <h2 id="overTitle">Permainan selesai</h2>
+      <div class="scores">
+        <div><span>Skor</span><strong id="finalScore">0</strong></div>
+        <div><span>Terbaik</span><strong id="finalBest">0</strong></div>
+      </div>
+      <p class="record hidden" id="record">Rekor baru!</p>
+      <button id="restart">Main lagi</button>
+      <button class="ghost wide" id="faceBtn2">Ganti muka</button>
+      <p class="tip">Atau tekan Enter untuk main lagi</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ============ PENGATURAN (silakan diubah-ubah) ============
+  const W = 400, H = 600;           // ukuran dunia game
+  const GROUND = 520;               // posisi tanah
+  const GRAVITY = 1500;             // gaya tarik ke bawah
+  const FLAP = -430;                // kekuatan sekali kepak
+  const BIRD_X = 110, BIRD_R = 14;  // posisi dan ukuran burung
+  const PIPE_W = 70;                // lebar bambu
+  const GAP_START = 175, GAP_MIN = 135;  // celah antar bambu (mengecil seiring skor)
+  const PIPE_SPACING = 230;         // jarak antar bambu
+  const SPEED_START = 150, SPEED_MAX = 240;
+
+  // ============ PERSIAPAN ============
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.scale(dpr, dpr);
+
+  const $ = id => document.getElementById(id);
+  const startScreen = $("startScreen"), overScreen = $("overScreen");
+
+  // Skor tertinggi disimpan di browser (localStorage)
+  let best = 0;
+  try { best = parseInt(localStorage.getItem("pipit-best") || "0", 10) || 0; } catch (e) {}
+  const saveBest = () => { try { localStorage.setItem("pipit-best", String(best)); } catch (e) {} };
+
+  // ============ MUKA BURUNG YANG BISA DIGANTI ============
+  const FACE_R = 16;     // ukuran muka
+  let faceImg = null;    // gambar muka (null = muka burung asli)
+
+  function updateFaceUI() { $("faceReset").classList.toggle("hidden", !faceImg); }
+
+  function loadFace(src) {
+    const img = new Image();
+    img.onload = () => { faceImg = img; updateFaceUI(); };
+    img.src = src;
+  }
+
+  // Muat muka yang pernah disimpan
+  try { const saved = localStorage.getItem("pipit-face"); if (saved) loadFace(saved); } catch (e) {}
+
+  // Pilih foto -> potong persegi dari tengah -> kecilkan -> simpan di browser
+  $("faceFile").addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 160, c = document.createElement("canvas");
+        c.width = c.height = size;
+        const s = Math.min(img.width, img.height);
+        c.getContext("2d").drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+        const data = c.toDataURL("image/jpeg", 0.85);
+        try { localStorage.setItem("pipit-face", data); } catch (err) {}
+        loadFace(data);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  });
+
+  const openPicker = () => $("faceFile").click();
+  $("faceBtn").addEventListener("click", openPicker);
+  $("faceBtn2").addEventListener("click", openPicker);
+  $("faceReset").addEventListener("click", () => {
+    faceImg = null;
+    try { localStorage.removeItem("pipit-face"); } catch (err) {}
+    updateFaceUI();
+  });
+
+  let state, bird, pipes, score, groundX, hillX, restartAfter = 0, tAnim = 0;
+
+  function reset() {
+    state = "ready";           // ready -> playing -> over
+    bird = { y: H / 2 - 20, vy: 0 };
+    pipes = [];
+    score = 0;
+    startScreen.classList.remove("hidden");
+    overScreen.classList.add("hidden");
+    document.activeElement && document.activeElement.blur();
+  }
+
+  // ============ LOGIKA ============
+  function flap() {
+    if (state === "ready") {
+      state = "playing";
+      startScreen.classList.add("hidden");
+      bird.vy = FLAP;
+    } else if (state === "playing") {
+      bird.vy = FLAP;
+    }
+  }
+
+  function die() {
+    if (state !== "playing") return;
+    state = "over";
+    const isRecord = score > best;
+    if (isRecord) { best = score; saveBest(); }
+    $("finalScore").textContent = score;
+    $("finalBest").textContent = best;
+    $("record").classList.toggle("hidden", !isRecord);
+    overScreen.classList.remove("hidden");
+    restartAfter = performance.now() + 450;   // cegah restart tidak sengaja
+    $("restart").focus({ preventScroll: true });
+  }
+
+  function currentGap() { return Math.max(GAP_MIN, GAP_START - score * 2); }
+  function currentSpeed() { return Math.min(SPEED_MAX, SPEED_START + score * 4); }
+
+  function spawnPipe() {
+    const gap = currentGap();
+    const margin = 90;
+    const gapY = margin + gap / 2 + Math.random() * (GROUND - 2 * margin - gap);
+    pipes.push({ x: W + 20, gapY, gap, passed: false });
+  }
+
+  function update(dt) {
+    tAnim += dt;
+    const speed = state === "over" ? 0 : (state === "playing" ? currentSpeed() : 60);
+    groundX = (groundX - speed * dt + 40) % 40;
+    hillX = (hillX - speed * 0.25 * dt + 400) % 400;
+
+    if (state === "ready") {
+      bird.y = H / 2 - 20 + Math.sin(tAnim * 4) * 8;
+      return;
+    }
+
+    // Burung jatuh (juga setelah kalah)
+    bird.vy += GRAVITY * dt;
+    bird.y += bird.vy * dt;
+    if (bird.y - BIRD_R < 0) { bird.y = BIRD_R; bird.vy = 0; }
+    if (bird.y + BIRD_R >= GROUND) {
+      bird.y = GROUND - BIRD_R; bird.vy = 0;
+      die();
+    }
+    if (state !== "playing") return;
+
+    // Bambu bergerak
+    pipes.forEach(p => p.x -= speed * dt);
+    if (!pipes.length || pipes[pipes.length - 1].x < W - PIPE_SPACING) spawnPipe();
+    pipes = pipes.filter(p => p.x + PIPE_W > -10);
+
+    for (const p of pipes) {
+      if (!p.passed && p.x + PIPE_W < BIRD_X - BIRD_R) { p.passed = true; score++; }
+      const hitX = BIRD_X + BIRD_R - 2 > p.x && BIRD_X - BIRD_R + 2 < p.x + PIPE_W;
+      if (hitX && (bird.y - BIRD_R + 2 < p.gapY - p.gap / 2 || bird.y + BIRD_R - 2 > p.gapY + p.gap / 2)) die();
+    }
+  }
+
+  // ============ GAMBAR ============
+  function drawHills() {
+    ctx.fillStyle = "#b5d8cb";
+    ctx.beginPath(); ctx.moveTo(0, GROUND);
+    for (let x = 0; x <= W; x += 10) {
+      const y = GROUND - 70 - 35 * Math.sin((x + hillX) / 400 * Math.PI * 4) - 15 * Math.sin((x + hillX) / 400 * Math.PI * 10);
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W, GROUND); ctx.closePath(); ctx.fill();
+  }
+
+  function drawBamboo(x, y, w, h, capAtBottom) {
+    if (h <= 0) return;
+    ctx.fillStyle = "#2f7d4f"; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#47a06b"; ctx.fillRect(x + 8, y, 10, h);          // kilau
+    ctx.fillStyle = "#1f5a37";
+    for (let j = y - (y % 46); j < y + h; j += 46) {                  // ruas bambu
+      if (j > y + 6 && j < y + h - 6) ctx.fillRect(x - 2, j, w + 4, 5);
+    }
+    const capY = capAtBottom ? y + h - 20 : y;
+    ctx.fillStyle = "#256844"; ctx.fillRect(x - 5, capY, w + 10, 20);
+    ctx.strokeStyle = "#1d3b2f"; ctx.lineWidth = 2;
+    ctx.strokeRect(x - 5, capY, w + 10, 20);
+  }
+
+  function drawBird() {
+    ctx.save();
+    ctx.translate(BIRD_X, bird.y);
+    ctx.rotate(Math.max(-0.5, Math.min(1.2, bird.vy / 600)));
+    const flapAnim = state === "over" ? 0 : Math.sin(tAnim * 22) * 5;
+    ctx.fillStyle = "#e0583a";                                         // badan
+    ctx.beginPath(); ctx.ellipse(0, 0, BIRD_R + 3, BIRD_R, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#b8412a";                                         // sayap
+    ctx.beginPath(); ctx.ellipse(-4, 3 + flapAnim * 0.3, 8, 5 + Math.abs(flapAnim) * 0.4, -0.3, 0, Math.PI * 2); ctx.fill();
+    if (faceImg) {
+      // Muka buatanmu sendiri (dipotong bulat)
+      ctx.save();
+      ctx.beginPath(); ctx.arc(6, -3, FACE_R, 0, Math.PI * 2); ctx.clip();
+      ctx.drawImage(faceImg, 6 - FACE_R, -3 - FACE_R, FACE_R * 2, FACE_R * 2);
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(6, -3, FACE_R, 0, Math.PI * 2);
+      ctx.lineWidth = 3; ctx.strokeStyle = "#1d3b2f"; ctx.stroke();
+    } else {
+      ctx.fillStyle = "#f2b630";                                       // paruh
+      ctx.beginPath(); ctx.moveTo(BIRD_R, -3); ctx.lineTo(BIRD_R + 10, 1); ctx.lineTo(BIRD_R, 5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(7, -5, 5, 0, Math.PI * 2); ctx.fill();   // mata
+      ctx.fillStyle = "#1d3b2f"; ctx.beginPath(); ctx.arc(8.5, -5, 2.4, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.fillStyle = "#cfe8e0"; ctx.fillRect(0, 0, W, H);
+    drawHills();
+
+    for (const p of pipes) {
+      drawBamboo(p.x, 0, PIPE_W, p.gapY - p.gap / 2, true);
+      drawBamboo(p.x, p.gapY + p.gap / 2, PIPE_W, GROUND - (p.gapY + p.gap / 2), false);
+    }
+
+    // Tanah
+    ctx.fillStyle = "#8a6a3d"; ctx.fillRect(0, GROUND, W, H - GROUND);
+    ctx.fillStyle = "#5e8f3c"; ctx.fillRect(0, GROUND, W, 12);
+    ctx.fillStyle = "#74502c";
+    for (let x = -40 + groundX; x < W; x += 40) ctx.fillRect(x, GROUND + 28, 20, 6);
+
+    drawBird();
+
+    // Skor dan skor tertinggi
+    ctx.textAlign = "center";
+    ctx.font = "800 64px 'Bricolage Grotesque', 'Segoe UI', sans-serif";
+    ctx.lineWidth = 8; ctx.strokeStyle = "#1d3b2f"; ctx.lineJoin = "round";
+    ctx.strokeText(score, W / 2, 90);
+    ctx.fillStyle = "#fbf7ea"; ctx.fillText(score, W / 2, 90);
+
+    ctx.textAlign = "left";
+    ctx.font = "700 18px 'Bricolage Grotesque', 'Segoe UI', sans-serif";
+    ctx.lineWidth = 5;
+    const txt = "Terbaik: " + best;
+    ctx.strokeText(txt, 14, 28); ctx.fillText(txt, 14, 28);
+  }
+
+  // ============ LOOP GAME ============
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min((now - last) / 1000, 0.033);   // batasi supaya stabil
+    last = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ============ KONTROL ============
+  $("stage").addEventListener("pointerdown", e => {
+    if (e.target.closest("button")) return;
+    flap();
+  });
+  $("restart").addEventListener("click", reset);
+
+  document.addEventListener("keydown", e => {
+    if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") {
+      e.preventDefault();
+      if (state === "over") { if (performance.now() > restartAfter) reset(); }
+      else flap();
+    } else if (e.code === "Enter" || e.code === "KeyR") {
+      if (state === "over" && performance.now() > restartAfter) { e.preventDefault(); reset(); }
+    }
+  });
+
+  groundX = 0; hillX = 0;
+  reset();
+  requestAnimationFrame(loop);
+</script>
+</body>
+</html>
