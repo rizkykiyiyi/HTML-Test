@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulau Kabut</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@400;500;700&family=Bricolage+Grotesque:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sea: #0f3d3e;
+    --deep: #0a2a2b;
+    --sand: #f1e9d2;
+    --lantern: #f2c14e;
+    --fog: #8fb3ad;
+    --danger: #e0674f;
+    --ui: "Bricolage Grotesque", "Segoe UI", sans-serif;
+    --story: "Alegreya", Georgia, serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    min-height: 100vh;
+    background: radial-gradient(ellipse at 20% 0%, #17595a 0%, var(--sea) 45%, var(--deep) 100%);
+    color: var(--sand);
+    font-family: var(--story);
+    font-size: 1.2rem;
+    line-height: 1.6;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+  .game {
+    width: min(920px, 100%);
+    display: grid;
+    grid-template-columns: 230px 1fr;
+    gap: 28px;
+  }
+  @media (max-width: 720px) { .game { grid-template-columns: 1fr; } }
+
+  /* Panel status */
+  aside { font-family: var(--ui); }
+  aside h1 { font-size: 1.7rem; font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; margin-bottom: 22px; }
+  aside h2 { font-size: 0.95rem; font-weight: 700; color: var(--fog); margin: 18px 0 8px; }
+  .hp-bar { height: 12px; background: var(--deep); border: 2px solid var(--fog); border-radius: 3px; overflow: hidden; }
+  .hp-fill { height: 100%; background: var(--lantern); transition: width .4s; }
+  .hp-fill.low { background: var(--danger); }
+  .hp-text { font-size: 0.9rem; margin-top: 4px; }
+  .items { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; }
+  .items li { border: 2px solid var(--lantern); color: var(--lantern); border-radius: 3px; padding: 2px 10px; font-size: 0.9rem; font-weight: 500; }
+  .items .none { border-color: transparent; color: var(--fog); padding-left: 0; }
+
+  /* Cerita */
+  main { border-left: 2px solid var(--fog); padding-left: 28px; min-height: 420px; }
+  @media (max-width: 720px) { main { border-left: none; padding-left: 0; border-top: 2px solid var(--fog); padding-top: 24px; } }
+  h2.title { font-family: var(--ui); font-size: 1.9rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 12px; }
+  .text { max-width: 60ch; margin-bottom: 18px; }
+  .log { font-family: var(--ui); font-size: 0.95rem; color: var(--lantern); border-left: 4px solid var(--lantern); padding: 2px 0 2px 12px; margin-bottom: 16px; }
+  .log.bad { color: var(--danger); border-color: var(--danger); }
+  .choices { display: grid; gap: 10px; max-width: 520px; }
+  .choices button {
+    font: 500 1.05rem var(--ui); color: var(--sand); text-align: left;
+    background: transparent; border: 2px solid var(--fog); border-radius: 4px;
+    padding: 10px 14px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px;
+  }
+  .choices button:hover:not(:disabled) { border-color: var(--lantern); color: var(--lantern); }
+  .choices button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
+  .choices button:disabled { opacity: .45; cursor: not-allowed; }
+  .choices .need { font-size: 0.85rem; color: var(--fog); white-space: nowrap; }
+  .end { font-family: var(--ui); font-weight: 700; font-size: 1.1rem; margin: 6px 0 14px; }
+  .end.win { color: var(--lantern); }
+  .end.lose { color: var(--danger); }
+  .hint { font-family: var(--ui); font-size: .85rem; color: var(--fog); margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="game">
+  <aside>
+    <h1>Pulau Kabut</h1>
+    <h2>Nyawa</h2>
+    <div class="hp-bar"><div class="hp-fill" id="hpFill"></div></div>
+    <div class="hp-text" id="hpText"></div>
+    <h2>Tas</h2>
+    <ul class="items" id="items"></ul>
+  </aside>
+  <main>
+    <h2 class="title" id="title"></h2>
+    <p class="text" id="text"></p>
+    <div id="log"></div>
+    <div id="end"></div>
+    <div class="choices" id="choices"></div>
+    <p class="hint">Tekan angka 1–9 di keyboard untuk memilih.</p>
+  </main>
+</div>
+
+<script>
+  // ============ DATA CERITA ============
+  // Tiap scene punya: title, text (teks atau fungsi), choices, dan end (opsional: "win" / "lose" / "neutral").
+  // Pilihan bisa punya: label, to, need (item yang dibutuhkan), give, hp, once, msg.
+  const ITEM_NAMES = { lentera: "Lentera", tali: "Tali", pisau: "Pisau", kunci: "Kunci perunggu", permata: "Permata Bulan" };
+  const MAX_HP = 10;
+
+  const scenes = {
+    pantai: {
+      title: "Pantai berkabut",
+      text: "Ombak melemparmu ke pantai yang sepi. Kabut tebal menggantung rendah. Di kejauhan ada hutan lebat, mulut gua di tebing karang, dan bangkai perahu yang setengah terkubur pasir. Menurut legenda, Permata Bulan tersimpan di kuil tua pulau ini.",
+      choices: [
+        { label: "Periksa perahu karam", to: "perahu" },
+        { label: "Masuk ke hutan", to: "hutan" },
+        { label: "Menuju gua di tebing", to: "gua" },
+        { label: "Buat rakit dan tinggalkan pulau", to: "pulang", need: ["tali", "pisau"] }
+      ]
+    },
+    perahu: {
+      title: "Perahu karam",
+      text: s => s.flags.perahu
+        ? "Peti di dalam perahu sudah kosong. Hanya pasir dan serpihan kayu yang tersisa."
+        : "Di dalam perahu ada peti kecil yang belum terkunci. Isinya sebuah lentera tua dan segulung tali yang masih kuat.",
+      choices: [
+        { label: "Ambil lentera dan tali", give: ["lentera", "tali"], once: "perahu", msg: "Kamu mengambil lentera dan tali." , to: "perahu" },
+        { label: "Kembali ke pantai", to: "pantai" }
+      ]
+    },
+    hutan: {
+      title: "Hutan rimbun",
+      text: "Pepohonan tumbuh rapat dan sinar matahari nyaris tak tembus. Ada sebuah pondok reyot di sela pohon, dan jalan setapak yang menurun ke arah suara air.",
+      choices: [
+        { label: "Masuk ke pondok tua", to: "pondok" },
+        { label: "Ikuti jalan setapak ke sungai", to: s => s.flags.babi ? "sungai" : "babi" },
+        { label: "Kembali ke pantai", to: "pantai" }
+      ]
+    },
+    pondok: {
+      title: "Pondok tua",
+      text: "Pondoknya kosong, tetapi di atas meja ada sebuah pisau berkarat dan sepotong roti yang masih layak dimakan.",
+      choices: [
+        { label: "Ambil pisau", give: ["pisau"], once: "pisau", msg: "Kamu mengambil pisau.", to: "pondok" },
+        { label: "Makan roti (+3 nyawa)", hp: 3, once: "roti", msg: "Rotinya sederhana, tetapi tenagamu pulih.", to: "pondok" },
+        { label: "Keluar ke hutan", to: "hutan" }
+      ]
+    },
+    babi: {
+      title: "Babi hutan",
+      text: "Seekor babi hutan besar menghadang di tengah jalan setapak. Matanya merah dan ia siap menyeruduk.",
+      choices: [
+        { label: "Lawan dengan pisau", need: ["pisau"], hp: -1, flag: "babi", msg: "Kamu mengusirnya, tetapi lenganmu tergores (-1 nyawa).", to: "sungai" },
+        { label: "Lari mengitarinya", hp: -3, flag: "babi", msg: "Kamu terkena seruduk saat berlari (-3 nyawa).", to: "sungai" },
+        { label: "Mundur pelan-pelan", to: "hutan" }
+      ]
+    },
+    sungai: {
+      title: "Jurang sungai",
+      text: "Sungai mengalir deras di dasar jurang. Jembatan tali di sini sudah putus. Di seberang, atap kuil batu muncul di balik kabut.",
+      choices: [
+        { label: "Pasang tali dan menyeberang", need: ["tali"], to: "kuil", msg: "Kamu berhasil menyeberang dengan tali." },
+        { label: "Lompati jurang", hp: -10, msg: "Lompatanmu kurang jauh.", to: "kalah" },
+        { label: "Kembali ke hutan", to: "hutan" }
+      ]
+    },
+    gua: {
+      title: "Mulut gua",
+      text: "Gua itu gelap pekat dan udaranya dingin. Dari dalam terdengar tetesan air yang menggema.",
+      choices: [
+        { label: "Masuk dengan lentera", need: ["lentera"], to: "gua_dalam" },
+        { label: "Masuk tanpa penerangan", hp: -4, msg: "Kamu tersandung batu dan terpaksa keluar (-4 nyawa).", to: "pantai" },
+        { label: "Kembali ke pantai", to: "pantai" }
+      ]
+    },
+    gua_dalam: {
+      title: "Ruang patung",
+      text: s => s.flags.kunci
+        ? "Patung batu di tengah ruangan kini menggenggam tangan kosong. Ukiran di dinding menggambarkan sebuah kuil di seberang sungai."
+        : "Cahaya lenteramu menyorot patung batu yang menggenggam sebuah kunci perunggu. Ukiran di dinding menggambarkan sebuah kuil di seberang sungai.",
+      choices: [
+        { label: "Ambil kunci perunggu", give: ["kunci"], once: "kunci", msg: "Kamu mengambil kunci perunggu.", to: "gua_dalam" },
+        { label: "Keluar dari gua", to: "pantai" }
+      ]
+    },
+    kuil: {
+      title: "Kuil batu",
+      text: "Sebuah pintu batu besar menutup pintu masuk kuil. Di tengahnya ada lubang kunci berbentuk bulan sabit.",
+      choices: [
+        { label: "Buka dengan kunci perunggu", need: ["kunci"], to: "ruang_permata" },
+        { label: "Dobrak pintunya", hp: -5, msg: "Pintu tidak bergeming dan bahumu sakit (-5 nyawa).", to: "kuil" },
+        { label: "Kembali ke sungai", to: "sungai" }
+      ]
+    },
+    ruang_permata: {
+      title: "Ruang Permata Bulan",
+      text: "Pintu bergeser terbuka. Di atas altar, Permata Bulan berpendar lembut dan menerangi seluruh ruangan.",
+      choices: [
+        { label: "Ambil Permata Bulan", give: ["permata"], to: "menang" }
+      ]
+    },
+    menang: {
+      title: "Permata di tanganmu",
+      text: "Kabut perlahan menghilang. Sebuah kapal nelayan muncul di cakrawala, dan kamu melambai sambil menggenggam Permata Bulan. Petualanganmu di Pulau Kabut berakhir dengan kemenangan.",
+      end: "win", endLabel: "Ending: Pemburu Permata",
+      choices: []
+    },
+    pulang: {
+      title: "Rakit sederhana",
+      text: "Kamu mengikat batang kayu dengan tali dan berlayar menembus kabut. Kamu selamat sampai ke daratan, tetapi rahasia Permata Bulan tetap menjadi misteri.",
+      end: "neutral", endLabel: "Ending: Pulang dengan selamat",
+      choices: []
+    },
+    kalah: {
+      title: "Petualangan berakhir",
+      text: "Tenagamu habis dan pandanganmu memudar. Kabut Pulau Kabut menelan jejakmu, seperti yang terjadi pada banyak petualang sebelumnya.",
+      end: "lose", endLabel: "Ending: Hilang di dalam kabut",
+      choices: []
+    }
+  };
+
+  // ============ STATE & LOGIKA ============
+  let state;
+  const $ = id => document.getElementById(id);
+
+  function newGame() {
+    state = { hp: MAX_HP, items: [], flags: {}, scene: "pantai", log: null };
+    render();
+  }
+
+  const needs = c => (c.need || []).filter(i => !state.items.includes(i));
+  const resolve = v => (typeof v === "function" ? v(state) : v);
+
+  function choose(c) {
+    if (needs(c).length) return;
+    if (c.once) state.flags[c.once] = true;
+    if (c.flag) state.flags[c.flag] = true;
+    (c.give || []).forEach(i => { if (!state.items.includes(i)) state.items.push(i); });
+    if (c.hp) state.hp = Math.max(0, Math.min(MAX_HP, state.hp + c.hp));
+    state.log = c.msg ? { text: c.msg, bad: c.hp < 0 } : null;
+    state.scene = state.hp <= 0 ? "kalah" : resolve(c.to);
+    render();
+  }
+
+  // ============ TAMPILAN ============
+  function render() {
+    const sc = scenes[state.scene];
+
+    // Panel status
+    const pct = (state.hp / MAX_HP) * 100;
+    $("hpFill").style.width = pct + "%";
+    $("hpFill").classList.toggle("low", state.hp <= 3);
+    $("hpText").textContent = `${state.hp} dari ${MAX_HP}`;
+    $("items").innerHTML = state.items.length
+      ? state.items.map(i => `<li>${ITEM_NAMES[i]}</li>`).join("")
+      : '<li class="none">Masih kosong</li>';
+
+    // Cerita
+    $("title").textContent = sc.title;
+    $("text").textContent = resolve(sc.text);
+    $("log").innerHTML = "";
+    if (state.log) {
+      const p = document.createElement("p");
+      p.className = "log" + (state.log.bad ? " bad" : "");
+      p.textContent = state.log.text;
+      $("log").appendChild(p);
+    }
+
+    // Ending
+    $("end").innerHTML = sc.end ? `<p class="end ${sc.end}">${sc.endLabel}</p>` : "";
+
+    // Pilihan
+    const box = $("choices");
+    box.innerHTML = "";
+    const list = sc.end
+      ? [{ label: "Main lagi", restart: true }]
+      : sc.choices.filter(c => !(c.once && state.flags[c.once]));
+
+    list.forEach((c, idx) => {
+      const b = document.createElement("button");
+      const missing = c.restart ? [] : needs(c);
+      b.innerHTML = `<span>${idx + 1}. </span>`;
+      b.firstChild.textContent = `${idx + 1}. ${c.label}`;
+      if (missing.length) {
+        b.disabled = true;
+        const n = document.createElement("span");
+        n.className = "need";
+        n.textContent = "butuh " + missing.map(i => ITEM_NAMES[i]).join(", ");
+        b.appendChild(n);
+      }
+      b.onclick = () => (c.restart ? newGame() : choose(c));
+      box.appendChild(b);
+    });
+    state.current = list;
+  }
+
+  document.addEventListener("keydown", e => {
+    const n = parseInt(e.key, 10);
+    if (!n || !state.current || !state.current[n - 1]) return;
+    const c = state.current[n - 1];
+    if (c.restart) return newGame();
+    choose(c);
+  });
+
+  newGame();
+</script>
+</body>
+</html>
